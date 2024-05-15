@@ -1,0 +1,74 @@
+Running svd2rust on STM32U083.svd
+=================================
+Command:  svd2rust -i STM32U083.svd
+=================================
+Error #1 : 59817:15 LPUART1 -> LPUART_CR3 -> WS0 (bit 20) and WS1 (bit 21)
+Problem  : Pins in bitfield are individually defined, but its a 2-bit range  
+Solution : Remove WUS1 and rename WUS0 to WUS, changing bitWidth from 1 to 2.
+
+Error #2 : 76134:15 TIM1 -> TIM1_SMCR -> SMS
+Problem  : Value 8 of range rely on bit 16 SMS[3] to complete 4-bit field
+Solution : Rename SMS[0] to SMS[2:0]
+		   Add note about Bit 16 completing bitfield, in description of field
+		   Add descriptions for 8 in value descriptions for 0 (9-15 reserved)
+		   Remove value 8
+
+Error #3 : 77447:15 TIM1 -> TIM1_CCMR1_OUTPUT -> OC1M
+Problem  : Values 8-15 of range rely on bit 16 OC1M[3] to complete 4-bit field
+Solution : Add descriptions for 8-15 in value descriptions for 0-7,
+		   Remove value 8-15
+
+ERROR #4 : 85343:15 USART1 -> USART_CR3 -> WUS0
+Problem  : Value 2 out of range [0 - 1]
+Solution : Remove WUS1 and rename WUS0 to WUS, changing bitWidth from 1 to 2.
+
+!svd2rust compiles and renders device
+=================================
+Command:	rm -rf src
+Command:	form -i lib.rs -o src/ && rm lib.rs
+Command:	cargo fmt
+=================================
+Command:	cargo build
+=================================
+31 Errors.  First addressed was for usart1/usart_gtpr.rs.  Problem was that the PSC bits created an Enum Psc that redefines values.  It's a prescaler value that differs depending on whether you are in Low Power IrDA mode or SmartCard mode.  
+
+To alleviate the errors for this file, I commented out the <enumeratedValues>..</enumeratedValues> section for USART1_GTPR's PSC field at lines 85591-85627 in the STM32U083.svd file.
+=================================
+Command:	rm -rf src
+Command:	svd2rust -i STM32U083.svd
+Command:	form -i lib.rs -ooo src/ && rm lib.rs
+Command:	cargo fmt
+Command:	cargo build
+=================================
+The build still fails, only now shows 28 errors.
+The file usart1/usart_gtpr.rs now appears correct, albeit the Psc enumeration is gone so the Psc fields are just treated as an 8-bit bit field, which should be okay.
+
+Next up will be the usb/usb_cntr.rs.  It has an Enum Usbrst with a similar problem where Device Mode and Host mode use this enumeration.  Regardless, 0 is no effect or not in reset, and 1 is in Reset or Reset is being driven.  Thus, I adjusted the SVD file to combine them into only 2 values at lines 89126-89136.  I did this again for the SUSPEN field at 89197-89215 for the same reason.
+=================================
+Command:	rm -rf src
+Command:	svd2rust -i STM32U083.svd
+Command:	form -i lib.rs -ooo src/ && rm lib.rs
+Command:	cargo fmt
+Command:	cargo build
+=================================
+The build still fails, only now shows 24 errors.
+The file usb/usb_cntr.rs now appears correct.
+That leaves the lptim1/lptim1_ccmr1.rs, lptim2/lptim2_ccmr1.rs, and lptim3/lptim3_ccmr1.rs files, each with apparently 8 errors.  It appears the errors are again similar but involve the Cc1e, Cc1p, Cc2e, and Cc2p enumerations.
+I started with lptim1/lptim1_ccmr1.rs.  I fixed the enumeratedValues by altering the descriptions of the bits to show what if an Output and if an Input, and removed extraneous values.  This occurred at 52385-52398, 52415-52454, 52527-52538, and 52554-52574.
+=================================
+Command:	rm -rf src
+Command:	svd2rust -i STM32U083.svd
+Command:	form -i lib.rs -ooo src/ && rm lib.rs
+Command:	cargo fmt
+Command:	cargo build
+=================================
+That seemed to work as it still failed, but now shows 16 errors.
+The file lptim1/lptim1_ccmr1.rs appears correct.  I will apply the same corrections to lptim2 and lptim3's Cc1E, Cc1p, Cc2e, and Cc2p values in the SVD file.  The changes for each set started at 55167,55198,55309, and 55341 for Cc1e and Cc1p.  For Cc2e and Cc2p they were at 55976,58007,58099, and 58136.
+=================================
+Command:	rm -rf src
+Command:	svd2rust -i STM32U083.svd
+Command:	form -i lib.rs -ooo src/ && rm lib.rs
+Command:	cargo fmt
+Command:	cargo build
+=================================
+This time everything seemed to build properly and all files appear corrected.
